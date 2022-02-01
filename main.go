@@ -13,29 +13,21 @@ func main() {
 		return
 	}
 	// set the interface to monitor mode
-	err = interfaces.SetMonitorMode(iface)
+	err = iface.SetMonitorMode()
 	if err != nil {
-		fmt.Println("err :", err)
+		fmt.Println("err : Cannot set the interface to monitor mode")
 		return
 	}
 	// scan for access points
-	iface.Scan(iface)
+	APs := iface.GetAPs()
 	// ask for the access point to deauth
-	ap, err := interfaces.AskAP()
-	if err != nil {
-		fmt.Println("err :", err)
-		return
-	}
+	ap := interfaces.AskAP(APs)
 	// scan for clients connected to the access point
-	iface.GetClient(ap)
+	clients := iface.GetClient()
 	// ask for the client to deauth in the access point
-	client, err := interfaces.AskClient()
-	if err != nil {
-		fmt.Println("err :", err)
-		return
-	}
+	client := interfaces.AskClient(clients)
 	// deauth the client
-	iface.Deauth(ap, client)
+	interfaces.Deauth(iface, ap, client)
 	// reset the interface to normal mode
 	iface.Reset()
 }
