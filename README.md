@@ -2,9 +2,9 @@
 deauth packet sender in golang
 # Purpose
 - [x] Select an interface  
-- [ ] Set monitor mode  
+- [x] Set monitor mode  
 - [ ] Scan for accesspoints  
 - [ ] Scan for clients  
 - [ ] Deauth clients  
-- [ ] Cleanup  
+- [x] Cleanup  
 - [x] Exit  
