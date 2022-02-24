@@ -23,7 +23,7 @@ func main() {
 	// ask for the access point to deauth
 	ap := interfaces.AskAP(APs)
 	// scan for clients connected to the access point
-	clients := iface.GetClient()
+	clients := iface.GetClients(ap)
 	// ask for the client to deauth in the access point
 	client := interfaces.AskClient(clients)
 	// deauth the client
