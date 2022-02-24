@@ -1,6 +1,5 @@
-- [ ] ./interfaces/interfaces.go: check if the interface is already in Monitor Mode
-- [ ] ./interfaces/interfaces.go: set the interface to Monitor Mode
+- [X] ./interfaces/interfaces.go: set the interface to Monitor Mode
 - [ ] ./interfaces/interfaces.go: scan for access points
 - [ ] ./interfaces/interfaces.go: scan for clients connected to the access point
 - [ ] ./interfaces/interfaces.go: create and send the deauth packet
-- [ ] ./interfaces/interfaces.go: reset the interface to normal mode
+- [X] ./interfaces/interfaces.go: reset the interface to normal mode

@@ -12,6 +12,7 @@ func main() {
 		fmt.Println("err :", err)
 		return
 	}
+	defer iface.Inter.CleanUp()
 	// set the interface to monitor mode
 	err = iface.SetMonitorMode()
 	if err != nil {
@@ -28,6 +29,4 @@ func main() {
 	client := interfaces.AskClient(clients)
 	// deauth the client
 	interfaces.Deauth(iface, ap, client)
-	// reset the interface to normal mode
-	iface.Reset()
 }

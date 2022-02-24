@@ -11,8 +11,7 @@ import (
 
 type iface struct {
 	Name  string
-	Mode  bool
-	Inter pcap.Interface
+	Inter *pcap.InactiveHandle
 }
 
 // askInterface ask the user to select an interface
@@ -27,11 +26,10 @@ func AskInterface() (iface, error) {
 			fmt.Print("\033[F")
 		}
 	}
-	// from string to net.interface
+	// from string to pcap.IncativeHandle
 	for _, inter := range ifacesList {
 		if choice == inter.Name {
-			i := iface{Name: choice, Inter: inter}
-			i.Mode = i.GetMode()
+			i := iface{Name: choice, Inter: CreateInactiveHandle(choice)}
 			fmt.Println(i)
 			return i, nil
 		}
@@ -62,16 +60,17 @@ func ShowInterfaces(ifaces []pcap.Interface) {
 	}
 }
 
-// return true if the interface is in Monitor Mode
-// false if the interface is not yet in Monitor Mode
-func (i iface) GetMode() bool {
-	// TODO check if the interface is already in Monitor Mode
-	return false
+func CreateInactiveHandle(name string) *pcap.InactiveHandle {
+	iface, err := pcap.NewInactiveHandle(name)
+	if err != nil {
+		panic(err)
+	}
+	return iface
 }
 
 func (i *iface) SetMonitorMode() error {
-	// TODO set the interface to Monitor Mode
-	return nil
+	err := i.Inter.SetRFMon(true)
+	return err
 }
 
 // scan for access points and return array of mac addresses
@@ -129,9 +128,4 @@ func AskClient(clients []string) string {
 // create and send the deauth packet
 func Deauth(i iface, ap string, client string) {
 	// TODO create and send the deauth packet
-}
-
-// reset the interface to normal mode
-func (i iface) Reset() {
-	// TODO reset the interface to normal mode
 }
